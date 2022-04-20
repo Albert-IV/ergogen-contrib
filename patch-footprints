@@ -1,0 +1,5 @@
+#! /usr/bin/env node
+
+require('./src/patch-footprints')()
+  .then(console.log("done"))
+  .catch(console.error)
