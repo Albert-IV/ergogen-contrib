@@ -6,6 +6,12 @@ const ERGOGEN_DIRECTORY = "node_modules/ergogen"
 const ERGOGEN_FOOTPRINTS_DIRECTORY = `${ERGOGEN_DIRECTORY}/src/footprints`
 const ERGOGEN_BACKUP_DIRECTORY = `${ERGOGEN_DIRECTORY}/src/.footprints_backup`
 
+let VERBOSE = false
+
+const trace = (...args) => {
+  VERBOSE && console.info.apply(console.info, args)
+}
+
 const ensureLibraryExists = async (library) => {
   const footprints = await fs.readdir(`node_modules/${library}/src/footprints`)
   if (!footprints.length) {
@@ -19,7 +25,8 @@ const ensureLibrariesExist = async (libraries) =>
 const getFootprintLibraries = () => {
   // TODO: Add ability to support creating frontend files, echoing the
   // plaintext JS file containing all the footprints merged together.
-  const libraries = yargs(hideBin(process.argv)).argv._
+  const { _: libraries, verbose } = yargs(hideBin(process.argv)).argv
+  VERBOSE = verbose
 
   if (!libraries.includes("ergogen"))
     throw new Error("The package `ergogen` must be in the list of footprints to import")
@@ -52,34 +59,50 @@ const ensureBackup = async () => {
 }
 
 const patchLibrary = async (library) => {
+  trace("")
+  trace(`Patching ${library}`)
+  trace("")
+
+  const files = await getFootprintsFromLibrary(library)
+
+  return Promise.all(
+    files.map(({ footprint, location }) => {
+      trace(
+        `Copying file ${footprint} from ${location} to ${ERGOGEN_FOOTPRINTS_DIRECTORY}/${footprint}`
+      )
+      return fs.copyFile(location, `${ERGOGEN_FOOTPRINTS_DIRECTORY}/${footprint}`)
+    })
+  )
+}
+
+const patchLibraries = async (libraries) => {
+  await libraries.reduce(
+    (promise, library) => promise.then(() => patchLibrary(library)),
+    Promise.resolve()
+  )
+}
+
+const getFootprintsFromLibrary = async (library, useErgogenBackup = true) => {
   const footprintLocation =
-    libary === "ergogen" //
+    library === "ergogen" && useErgogenBackup //
       ? ERGOGEN_BACKUP_DIRECTORY
       : `node_modules/${library}/src/footprints`
 
   const files = await fs.readdir(footprintLocation)
-
-  return Promise.all(
-    files.map((file) =>
-      fs.copyFile(`${footprintLocation}/${file}`, `${ERGOGEN_FOOTPRINTS_DIRECTORY}/${file}`)
-    )
-  )
-}
-
-async function* patchLibraries(libraries) {
-  for (const library of libraries) {
-    yield await patchLibrary(library)
-  }
+  return files
+    .filter((file) => file !== "index.js" && file.match(".js"))
+    .map((file) => ({
+      location: `${footprintLocation}/${file}`,
+      footprint: file,
+    }))
 }
 
 const createIndexContents = async () => {
-  const footprints = (await fs.readdir(ERGOGEN_FOOTPRINTS_DIRECTORY)).filter(
-    (file) => file !== "index.js" && file.match(".js")
-  )
+  const footprints = await getFootprintsFromLibrary("ergogen", false)
 
   const fileParts = [
     `module.exports = {`,
-    ...footprints.map((footprint) => {
+    ...footprints.map(({ footprint }) => {
       const module = footprint.split(".")[0]
       return `  ${module}: require('./${module}'),`
     }),
