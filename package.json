@@ -1,6 +1,6 @@
 {
   "name": "ergogen-contrib",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Community-powered Ergogen footprints",
   "main": "src/patch-footprints.js",
   "bin": {
